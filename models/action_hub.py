@@ -55,19 +55,28 @@ def load_norm_stats(path: str) -> Dict[str, NormStats]:
         data = json.load(f)
     
     result = {}
-    
-    # Check if it's extended format (has norm_stats key)
+
+    # SimVLA extended format.
     if "norm_stats" in data:
         data = data["norm_stats"]
-    
+
+    # LeRobot stats.json format.
+    if "observation.state" in data or "action" in data:
+        mapped_data = {}
+        if "observation.state" in data:
+            mapped_data["state"] = data["observation.state"]
+        if "action" in data:
+            mapped_data["actions"] = data["action"]
+        data = mapped_data
+
     for key, stats in data.items():
         if key == "metadata":
             continue
         result[key] = NormStats(
             mean=np.array(stats["mean"], dtype=np.float32),
             std=np.array(stats["std"], dtype=np.float32),
-            q01=np.array(stats.get("q01"), dtype=np.float32) if stats.get("q01") else None,
-            q99=np.array(stats.get("q99"), dtype=np.float32) if stats.get("q99") else None,
+            q01=np.array(stats.get("q01"), dtype=np.float32) if stats.get("q01") is not None else None,
+            q99=np.array(stats.get("q99"), dtype=np.float32) if stats.get("q99") is not None else None,
         )
     return result
 

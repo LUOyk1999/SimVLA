@@ -16,7 +16,7 @@ conda activate simvla
 
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install transformers>=4.57.0
-pip install peft accelerate fastapi tensorboard uvicorn json_numpy safetensors scipy einops timm mmengine pyarrow h5py mediapy num2words av wandb websockets msgpack_numpy
+pip install peft accelerate fastapi tensorboard uvicorn json_numpy safetensors scipy einops timm mmengine pyarrow h5py mediapy num2words av wandb websockets msgpack_numpy huggingface_hub
 pip install flash-attn==2.5.6 --no-build-isolation
 pip install tensorflow tensorflow-datasets
 ```
@@ -65,6 +65,46 @@ bash train_smolvlm_large.sh
 cd evaluation/libero
 ```
 
+## Training (HuggingFaceVLA / LeRobot LIBERO)
+
+The repo now also supports the LeRobot export used by `HuggingFaceVLA/libero`.
+This path matches the standard 4-suite LIBERO export (`libero_10`, `libero_goal`,
+`libero_object`, `libero_spatial`) and does not include `libero_90`.
+
+By default, training uses a single camera view for fairer comparison with
+single-view methods. To keep the original SimVLA multi-view setup, pass `dual`
+as the last script argument.
+
+**Small Model Configuration:**
+```bash
+bash train_smolvlm_small_lerobot.sh
+```
+
+**Large Model Configuration:**
+```bash
+bash train_smolvlm_large_lerobot.sh
+```
+
+Examples:
+```bash
+# all 40 tasks, single view
+bash train_smolvlm_small_lerobot.sh
+
+# libero_10 only, dual-view input
+bash train_smolvlm_small_lerobot.sh 64 0.1 ./runs/simvla_libero10 "" libero_10 dual
+```
+
+Optional environment variables:
+```bash
+export SIMVLA_LEROBOT_ROOT=/path/to/local/HuggingFaceVLA/libero/snapshot
+export SIMVLA_LEROBOT_REPO_ID=HuggingFaceVLA/libero
+```
+
+Notes:
+- If `SIMVLA_LEROBOT_ROOT` is unset, the loader resolves the dataset from the Hugging Face cache
+  or downloads the parquet + meta snapshot automatically.
+- `meta/stats.json` from the LeRobot export is used automatically for normalization when available.
+
 ### 6. Results
 
 <img width="506" height="1220" alt="image" src="https://github.com/user-attachments/assets/6ee1cd5e-42c5-4cf7-9cce-6dc04c1a215f" />
@@ -88,5 +128,4 @@ If you find our codes useful, please consider citing our work
   year={2026}
 }
 ```
-
 

@@ -29,7 +29,13 @@ import torch.backends.cudnn as cudnn
 from torch.optim import AdamW
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
-from datasets import create_smolvlm_dataloader
+from datasets import (
+    DEFAULT_LEROBOT_LIBERO_REPO_ID,
+    create_lerobot_libero_dataloader,
+    create_smolvlm_dataloader,
+    resolve_lerobot_libero_dataset_root,
+    resolve_lerobot_libero_norm_stats_path,
+)
 from models.modeling_smolvlm_vla import SmolVLMVLA
 from models.processing_smolvlm_vla import SmolVLMVLAProcessor
 
@@ -90,8 +96,22 @@ def get_args_parser():
                         help="Path or HF repo for SmolVLM backbone")
     
     # Data
-    parser.add_argument("--train_metas_path", type=str, required=True, 
-                        help="Path to training metadata")
+    parser.add_argument("--train_metas_path", type=str, default=None,
+                        help="Path to training metadata (required for libero_hdf5 backend)")
+    parser.add_argument("--dataset_backend", type=str, default="libero_hdf5",
+                        choices=["libero_hdf5", "lerobot_hf"],
+                        help="Dataset backend to use for training")
+    parser.add_argument("--dataset_root", type=str, default=None,
+                        help="Optional local dataset root for lerobot_hf backend")
+    parser.add_argument("--dataset_repo_id", type=str, default=DEFAULT_LEROBOT_LIBERO_REPO_ID,
+                        help="Dataset repo id for lerobot_hf backend")
+    parser.add_argument("--task_suite_name", type=str, default=None,
+                        help="Optional LIBERO suite filter: libero_10/libero_goal/libero_object/libero_spatial")
+    parser.add_argument("--camera_mode", type=str, default="single",
+                        choices=["single", "dual"],
+                        help="Camera inputs for lerobot_hf backend")
+    parser.add_argument("--local_files_only", action="store_true", default=False,
+                        help="Use local Hugging Face cache only when resolving lerobot_hf snapshots")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--image_size", type=int, default=384, 
                         help="Image size for SmolVLM (default: 384, can be 384 or 512)")
@@ -266,6 +286,10 @@ def main(args):
         "learning_rate": args.learning_rate,
         "batch_size": args.batch_size,
         "iters": args.iters,
+        "dataset_backend": args.dataset_backend,
+        "dataset_repo_id": args.dataset_repo_id,
+        "task_suite_name": args.task_suite_name,
+        "camera_mode": args.camera_mode,
         "smolvlm_model_path": args.smolvlm_model_path,
         "freeze_steps": args.freeze_steps,
         "warmup_steps": args.warmup_steps,
@@ -294,6 +318,27 @@ def main(args):
     logger.info(f"Args: {args}")
     logger.info(f"Using SmolVLM backbone: {args.smolvlm_model_path}")
     logger.info(f"Image size: {args.image_size}x{args.image_size}")
+
+    if args.dataset_backend == "libero_hdf5" and not args.train_metas_path:
+        raise ValueError("--train_metas_path is required when --dataset_backend=libero_hdf5.")
+    if args.dataset_backend == "lerobot_hf" and args.action_mode != "libero_joint":
+        raise ValueError(
+            "LeRobot LIBERO training currently supports --action_mode libero_joint only."
+        )
+
+    resolved_lerobot_root = None
+    if args.dataset_backend == "lerobot_hf":
+        resolved_lerobot_root = resolve_lerobot_libero_dataset_root(
+            args.dataset_root,
+            repo_id=args.dataset_repo_id,
+            local_files_only=args.local_files_only,
+        )
+        logger.info(f"Using LeRobot LIBERO root: {resolved_lerobot_root}")
+        if not args.norm_stats_path:
+            auto_norm_stats_path = resolve_lerobot_libero_norm_stats_path(resolved_lerobot_root)
+            if auto_norm_stats_path:
+                args.norm_stats_path = auto_norm_stats_path
+                logger.info(f"Using LeRobot normalization stats from: {args.norm_stats_path}")
 
     # Load model
     from models.configuration_smolvlm_vla import SmolVLMVLAConfig
@@ -350,16 +395,28 @@ def main(args):
     # Build processor
     processor = SmolVLMVLAProcessor.from_pretrained(args.smolvlm_model_path)
 
-    # Create SmolVLM dataloader (384x384 images)
-    train_dataloader = create_smolvlm_dataloader(
-        batch_size=args.batch_size,
-        metas_path=args.train_metas_path,
-        num_actions=model.num_actions,
-        action_mode=model.action_mode,
-        training=True,
-        num_workers=args.num_workers,
-        image_size=args.image_size,
-    )
+    if args.dataset_backend == "lerobot_hf":
+        train_dataloader = create_lerobot_libero_dataloader(
+            batch_size=args.batch_size,
+            dataset_root=resolved_lerobot_root,
+            num_actions=model.num_actions,
+            action_mode=model.action_mode,
+            training=True,
+            num_workers=args.num_workers,
+            image_size=args.image_size,
+            camera_mode=args.camera_mode,
+            task_suite_name=args.task_suite_name,
+        )
+    else:
+        train_dataloader = create_smolvlm_dataloader(
+            batch_size=args.batch_size,
+            metas_path=args.train_metas_path,
+            num_actions=model.num_actions,
+            action_mode=model.action_mode,
+            training=True,
+            num_workers=args.num_workers,
+            image_size=args.image_size,
+        )
 
     # Optimizer
     optim = build_optimizer(

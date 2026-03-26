@@ -7,6 +7,13 @@ from .dataset_smolvlm import (
     SmolVLMDataReaderWithPadding,
     create_smolvlm_dataloader,
 )
+from .dataset_lerobot_libero import (
+    DEFAULT_LEROBOT_LIBERO_REPO_ID,
+    create_lerobot_libero_dataloader,
+    normalize_libero_task_suite_name,
+    resolve_lerobot_libero_dataset_root,
+    resolve_lerobot_libero_norm_stats_path,
+)
 
 
 def worker_init_fn(worker_id: int):
@@ -34,5 +41,10 @@ __all__ = [
     "SmolVLMDataReader",
     "SmolVLMDataReaderWithPadding",
     "create_smolvlm_dataloader",
+    "DEFAULT_LEROBOT_LIBERO_REPO_ID",
+    "create_lerobot_libero_dataloader",
+    "normalize_libero_task_suite_name",
+    "resolve_lerobot_libero_dataset_root",
+    "resolve_lerobot_libero_norm_stats_path",
     "worker_init_fn",
 ]
